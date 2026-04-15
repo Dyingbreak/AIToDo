@@ -25,7 +25,9 @@ DEFAULT_CONFIG = {
     "ai_base_url": "https://api.openai.com/v1",
     "ai_api_key": "",
     "ai_model": "gpt-4o-mini",
-    "always_on_top": False
+    "always_on_top": False,
+    "window_x": None,
+    "window_y": None
 }
 
 THEMES = {
@@ -667,6 +669,7 @@ class StickyTodoApp(QMainWindow):
         self.load_config()
         self.load_tasks()
         self.init_ui()
+        self.restore_window_position()
         self.init_tray()
         self.apply_window_flags()
         self.apply_theme()
@@ -802,6 +805,7 @@ class StickyTodoApp(QMainWindow):
         self.activateWindow()
 
     def hide_to_tray(self):
+        self.save_window_position()
         self.hide()
         if self.tray:
             self.tray.showMessage("AIToDo", "程序已最小化到托盘", QSystemTrayIcon.Information, 1500)
@@ -822,6 +826,24 @@ class StickyTodoApp(QMainWindow):
         style = self.config.get("theme_style", "毛玻璃")
         dark = self.config.get("dark_mode", False)
         return THEMES.get(style, THEMES["毛玻璃"])["dark" if dark else "light"]
+
+    def restore_window_position(self):
+        x = self.config.get("window_x")
+        y = self.config.get("window_y")
+        if x is not None and y is not None:
+            self.move(int(x), int(y))
+        else:
+            # 没有保存过位置时，居中或保持默认位置
+            screen = QApplication.primaryScreen().availableGeometry()
+            x = (screen.width() - self.width()) // 2
+            y = (screen.height() - self.height()) // 2
+            self.move(x, y)
+
+    def save_window_position(self):
+        pos = self.pos()
+        self.config["window_x"] = pos.x()
+        self.config["window_y"] = pos.y()
+        self.save_config()
 
     def apply_theme(self):
         theme = self.current_theme()
@@ -1356,6 +1378,7 @@ class StickyTodoApp(QMainWindow):
 
     def close_app(self):
         try:
+            self.save_window_position()
             if self.tray:
                 self.tray.hide()
         except:
@@ -1363,8 +1386,10 @@ class StickyTodoApp(QMainWindow):
         QApplication.quit()
 
     def closeEvent(self, event):
-        event.ignore()
-        self.hide_to_tray()
+        self.save_window_position()
+        if self.tray:
+            self.tray.hide()
+        event.accept()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and event.pos().y() < 60:
@@ -1378,6 +1403,7 @@ class StickyTodoApp(QMainWindow):
 
     def mouseReleaseEvent(self, event):
         self.old_pos = None
+        self.save_window_position()
 
 
 if __name__ == "__main__":
