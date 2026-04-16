@@ -4,22 +4,24 @@ import os
 import json
 import uuid
 import requests
+import platform
 from datetime import datetime, timedelta
-from PyQt5.QtCore import Qt, QPoint, QThread, pyqtSignal, QTimer, QSize, QDateTime
-from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap, QPainter
+
+from PyQt5.QtCore import Qt, QPoint, QThread, pyqtSignal, QTimer, QSize, QDate
+from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap, QPainter, QPainterPath, QLinearGradient, QBrush
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QListWidget, QListWidgetItem, QMenu,
-    QAction, QSystemTrayIcon, QMessageBox, QDialog,
+    QSystemTrayIcon, QMessageBox, QDialog,
     QLabel, QComboBox, QSlider, QFrame, QGraphicsDropShadowEffect,
-    QFormLayout, QCheckBox, QTextEdit, QDateTimeEdit
+    QFormLayout, QCheckBox, QTextEdit, QDateEdit, QAction
 )
 
 TASKS_FILE = "tasks.json"
 CONFIG_FILE = "config.json"
 
 DEFAULT_CONFIG = {
-    "theme_style": "毛玻璃",
+    "theme_style": "简约主题",
     "dark_mode": False,
     "opacity": 0.92,
     "ai_base_url": "https://api.openai.com/v1",
@@ -31,48 +33,6 @@ DEFAULT_CONFIG = {
 }
 
 THEMES = {
-    "毛玻璃": {
-        "light": {
-            "window_bg": "rgba(255,255,255,135)",
-            "card_bg": "rgba(255,255,255,165)",
-            "panel_bg": "rgba(255,255,255,145)",
-            "input_bg": "rgba(255,255,255,175)",
-            "text": "#111111",
-            "subtext": "#666666",
-            "border": "rgba(255,255,255,180)",
-            "shadow": "rgba(0,0,0,55)",
-            "button_bg": "rgba(255,255,255,150)",
-            "button_hover": "rgba(255,255,255,195)",
-            "menu_bg": "rgba(255,255,255,245)",
-            "menu_hover": "rgba(0,122,255,20)",
-            "blue": "#007AFF",
-            "blue_hover": "#0A84FF",
-            "green": "#34C759",
-            "red": "#FF3B30",
-            "yellow": "#FFCC00",
-            "accent": "#6E6EFF"
-        },
-        "dark": {
-            "window_bg": "rgba(20,20,22,145)",
-            "card_bg": "rgba(30,30,32,175)",
-            "panel_bg": "rgba(44,44,46,150)",
-            "input_bg": "rgba(58,58,60,190)",
-            "text": "#FFFFFF",
-            "subtext": "#BBBBBB",
-            "border": "rgba(255,255,255,30)",
-            "shadow": "rgba(0,0,0,90)",
-            "button_bg": "rgba(58,58,60,180)",
-            "button_hover": "rgba(72,72,74,220)",
-            "menu_bg": "rgba(36,36,38,248)",
-            "menu_hover": "rgba(10,132,255,35)",
-            "blue": "#0A84FF",
-            "blue_hover": "#409CFF",
-            "green": "#30D158",
-            "red": "#FF453A",
-            "yellow": "#FFD60A",
-            "accent": "#8F8DFF"
-        }
-    },
     "简约主题": {
         "light": {
             "window_bg": "rgba(248,248,248,255)",
@@ -113,48 +73,6 @@ THEMES = {
             "red": "#F87171",
             "yellow": "#FBBF24",
             "accent": "#A78BFA"
-        }
-    },
-    "iOS主题": {
-        "light": {
-            "window_bg": "rgba(255,255,255,255)",
-            "card_bg": "rgba(255,255,255,255)",
-            "panel_bg": "rgba(248,248,250,255)",
-            "input_bg": "rgba(242,242,247,255)",
-            "text": "#111111",
-            "subtext": "#6B6B6B",
-            "border": "rgba(0,0,0,10)",
-            "shadow": "rgba(0,0,0,35)",
-            "button_bg": "#F2F2F7",
-            "button_hover": "#E9E9EF",
-            "menu_bg": "rgba(255,255,255,255)",
-            "menu_hover": "rgba(0,122,255,16)",
-            "blue": "#007AFF",
-            "blue_hover": "#0A84FF",
-            "green": "#34C759",
-            "red": "#FF3B30",
-            "yellow": "#FFCC00",
-            "accent": "#5E5CE6"
-        },
-        "dark": {
-            "window_bg": "rgba(0,0,0,255)",
-            "card_bg": "rgba(28,28,30,255)",
-            "panel_bg": "rgba(44,44,46,255)",
-            "input_bg": "rgba(58,58,60,255)",
-            "text": "#FFFFFF",
-            "subtext": "#A1A1A6",
-            "border": "rgba(255,255,255,10)",
-            "shadow": "rgba(0,0,0,80)",
-            "button_bg": "#3A3A3C",
-            "button_hover": "#4A4A4C",
-            "menu_bg": "rgba(28,28,30,255)",
-            "menu_hover": "rgba(10,132,255,30)",
-            "blue": "#0A84FF",
-            "blue_hover": "#409CFF",
-            "green": "#30D158",
-            "red": "#FF453A",
-            "yellow": "#FFD60A",
-            "accent": "#8E8E93"
         }
     },
     "巴洛克艺术主题": {
@@ -201,8 +119,7 @@ THEMES = {
     }
 }
 
-PRIORITY_EMOJI = {"高": "🔴", "中": "🟡", "低": "🟢"}
-TASK_PREVIEW_LEN = 24
+TASK_PREVIEW_LEN = 14
 
 
 def now_str():
@@ -211,6 +128,100 @@ def now_str():
 
 def task_preview(text, n=TASK_PREVIEW_LEN):
     return text if len(text) <= n else text[:n] + "..."
+
+
+def parse_datetime_text(text):
+    if not text:
+        return None
+
+    text = str(text).strip()
+
+    for fmt in ("%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt)
+        except Exception:
+            pass
+
+    m = re.match(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*(\d{1,2}):(\d{2})", text)
+    if m:
+        y, mo, d, hh, mm = map(int, m.groups())
+        return datetime(y, mo, d, hh, mm)
+
+    now = datetime.now()
+    day_offset = 0
+    if "今天" in text:
+        day_offset = 0
+    elif "明天" in text:
+        day_offset = 1
+    elif "后天" in text:
+        day_offset = 2
+    elif "大后天" in text:
+        day_offset = 3
+
+    base_date = now + timedelta(days=day_offset)
+    hour = None
+    minute = 0
+
+    m = re.search(r"(\d{1,2})[:：](\d{2})", text)
+    if m:
+        hour = int(m.group(1))
+        minute = int(m.group(2))
+
+    if hour is None:
+        m = re.search(r"(\d{1,2})\s*点\s*(半|(\d{1,2})分?)?", text)
+        if m:
+            hour = int(m.group(1))
+            if m.group(2) == "半":
+                minute = 30
+            elif m.group(3):
+                minute = int(m.group(3))
+
+    if hour is not None:
+        if ("下午" in text or "晚上" in text or "夜里" in text) and hour < 12:
+            hour += 12
+        elif "中午" in text:
+            if hour == 0 or hour == 12:
+                hour = 12
+            elif hour < 12:
+                hour += 12
+        return datetime(base_date.year, base_date.month, base_date.day, hour, minute)
+
+    if "中午" in text:
+        return datetime(base_date.year, base_date.month, base_date.day, 12, 0)
+    if "上午" in text:
+        return datetime(base_date.year, base_date.month, base_date.day, 9, 0)
+    if "下午" in text:
+        return datetime(base_date.year, base_date.month, base_date.day, 15, 0)
+    if "晚上" in text or "夜里" in text or "今晚" in text:
+        return datetime(base_date.year, base_date.month, base_date.day, 20, 0)
+
+    return None
+
+
+class SmoothMenu(QMenu):
+    def __init__(self, title=None, parent=None):
+        if title:
+            super().__init__(title, parent)
+        else:
+            super().__init__(parent)
+        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(15)
+        shadow.setXOffset(0)
+        shadow.setYOffset(4)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        self.setGraphicsEffect(shadow)
+
+
+# 自定义QListWidget，实现点击空白处取消选中
+class TaskListWidget(QListWidget):
+    def mousePressEvent(self, event):
+        item = self.itemAt(event.pos())
+        if not item:
+            self.clearSelection()
+        super().mousePressEvent(event)
 
 
 class AIWorker(QThread):
@@ -231,35 +242,35 @@ class AIWorker(QThread):
             }
 
             prompt = f"""
-你是一个待办事项助手，负责把用户的自然语言指令转换为严格 JSON。
-
-你必须遵守以下规则：
-1. 只输出 JSON，不能输出解释、备注、markdown、代码块
-2. JSON 必须使用以下字段：
-   - action
-   - task
-   - reminder
-   - priority
-3. 不要使用 content、title、reminder_time 等其他字段名
-4. priority 只能是：高 / 中 / 低
-5. reminder 尽量输出为标准格式：YYYY-MM-DD HH:MM
-6. 如果用户说的是“明天中午、后天晚上、今天下午3点”这类时间，可以直接转换
-7. 如果无法准确转换时间，也可以先返回自然语言，程序会再处理
-8. 如果用户没说优先级，默认低
-9. 如果用户没明确说任务名，也尽量从句子中提取出核心任务
-
-支持的 action：
-- add：添加任务，最常用的action
-- delete：删除任务
-- delete_done：删除所有已完成任务
-- clear_all：清空所有任务
-- update_priority：修改任务优先级
-- set_reminder：对特定的任务已存在任务进行提醒
-- complete：标记完成
-- uncomplete：取消完成
-
-用户输入：
-{self.text}
+                你是一个待办事项助手，负责把用户的自然语言指令转换为严格 JSON。
+                
+                你必须遵守以下规则：
+                1. 只输出 JSON，不能输出解释、备注、markdown、代码块
+                2. JSON 必须使用以下字段：
+                   - action
+                   - task
+                   - reminder
+                   - priority
+                3. 不要使用 content、title、reminder_time 等其他字段名
+                4. priority 只能是：高 / 中 / 低
+                5. reminder 尽量输出为标准格式：YYYY-MM-DD HH:MM
+                6. 如果用户说的是“明天中午、后天晚上、今天下午3点”这类时间，可以直接转换
+                7. 如果无法准确转换时间，请根据常识返回推算过后的时间，当前时间为{now_str()}
+                8. 如果用户没说优先级，默认低
+                9. 如果用户没明确说任务名，也尽量从句子中提取出核心任务
+                
+                支持的 action：
+                - add：添加任务，最常用的action
+                - delete：删除任务
+                - delete_done：删除所有已完成任务
+                - clear_all：清空所有任务
+                - update_priority：修改任务优先级
+                - set_reminder：对特定的任务已存在任务进行提醒
+                - complete：标记完成
+                - uncomplete：取消完成
+                
+                用户输入：
+                {self.text}
 """
 
             payload = {
@@ -289,25 +300,30 @@ class AIWorker(QThread):
 
 
 class EditTaskDialog(QDialog):
-    def __init__(self, task, parent=None):
+    def __init__(self, task, parent=None, theme=None):
         super().__init__(parent)
         self.task = task
+        self.theme = theme or {}
         self.drag_position = None
 
         self.setWindowTitle("任务详情")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setFixedSize(360, 275)  # 稍微缩小一点
 
-        # 主容器：承载所有控件，负责圆角和阴影
+        # 增加整体窗体尺寸以容纳阴影
+        self.setFixedSize(310, 210)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+
         self.mainFrame = QFrame(self)
         self.mainFrame.setObjectName("mainFrame")
-        self.mainFrame.setGeometry(8, 8, 344, 259)
+        main_layout.addWidget(self.mainFrame)
 
         shadow = QGraphicsDropShadowEffect(self.mainFrame)
-        shadow.setBlurRadius(22)
+        shadow.setBlurRadius(20)
         shadow.setXOffset(0)
-        shadow.setYOffset(5)
+        shadow.setYOffset(4)
         shadow.setColor(QColor(0, 0, 0, 50))
         self.mainFrame.setGraphicsEffect(shadow)
 
@@ -317,140 +333,138 @@ class EditTaskDialog(QDialog):
 
         self.text_edit = QTextEdit()
         self.text_edit.setText(task.get("task", ""))
-        self.text_edit.setFixedHeight(82)
+        self.text_edit.setFixedHeight(60)
         self.text_edit.setPlaceholderText("请输入任务内容")
         layout.addWidget(self.text_edit)
 
-        priority_row = QHBoxLayout()
-        priority_label = QLabel("优先级")
+        reminder_row = QHBoxLayout()
+        reminder_row.setSpacing(8)
+
+        self.reminder_enable = QCheckBox("提醒")
+
+        self.date_edit = QDateEdit()
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setFixedHeight(28)
+
+        self.time_edit = QLineEdit()
+        self.time_edit.setPlaceholderText("HH:mm")
+        self.time_edit.setFixedHeight(28)
+
+        reminder_row.addWidget(self.reminder_enable)
+        reminder_row.addWidget(self.date_edit, 3)
+        reminder_row.addWidget(self.time_edit, 2)
+        layout.addLayout(reminder_row)
+
+        reminder_text = task.get("reminder")
+        dt = parse_datetime_text(reminder_text) if reminder_text else None
+        if not dt:
+            dt = datetime.now()
+
+        self.date_edit.setDate(QDate(dt.year, dt.month, dt.day))
+        self.time_edit.setText(dt.strftime("%H:%M"))
+
+        self.reminder_enable.setChecked(bool(task.get("reminder")))
+        self.date_edit.setEnabled(self.reminder_enable.isChecked())
+        self.time_edit.setEnabled(self.reminder_enable.isChecked())
+
+        self.reminder_enable.toggled.connect(self.date_edit.setEnabled)
+        self.reminder_enable.toggled.connect(self.time_edit.setEnabled)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(8)
+
+        priority_label = QLabel("优先级:")
         self.priority_combo = QComboBox()
         self.priority_combo.addItems(["高", "中", "低"])
         self.priority_combo.setCurrentText(task.get("priority", "低"))
-        priority_row.addWidget(priority_label)
-        priority_row.addWidget(self.priority_combo)
-        layout.addLayout(priority_row)
+        self.priority_combo.setFixedWidth(60)
+        self.priority_combo.setFixedHeight(28)
 
-        self.reminder_enable = QCheckBox("启用提醒时间")
-        layout.addWidget(self.reminder_enable)
-
-        self.reminder_dt = QDateTimeEdit()
-        self.reminder_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
-        self.reminder_dt.setCalendarPopup(True)
-        self.reminder_dt.setFixedHeight(32)
-
-        reminder_text = task.get("reminder")
-        if reminder_text:
-            dt = QDateTime.fromString(reminder_text, "yyyy-MM-dd HH:mm")
-            self.reminder_dt.setDateTime(dt if dt.isValid() else QDateTime.currentDateTime())
-            self.reminder_enable.setChecked(True)
-        else:
-            self.reminder_dt.setDateTime(QDateTime.currentDateTime())
-            self.reminder_enable.setChecked(False)
-
-        self.reminder_dt.setEnabled(self.reminder_enable.isChecked())
-        self.reminder_enable.toggled.connect(self.reminder_dt.setEnabled)
-        layout.addWidget(self.reminder_dt)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
+        bottom_row.addWidget(priority_label)
+        bottom_row.addWidget(self.priority_combo)
+        bottom_row.addStretch()
 
         self.cancel_btn = QPushButton("取消")
         self.save_btn = QPushButton("保存")
-        self.cancel_btn.setFixedSize(72, 30)
-        self.save_btn.setFixedSize(72, 30)
+        self.cancel_btn.setFixedSize(50, 26)
+        self.save_btn.setFixedSize(50, 26)
         self.cancel_btn.clicked.connect(self.reject)
         self.save_btn.clicked.connect(self.accept)
 
-        btn_row.addWidget(self.cancel_btn)
-        btn_row.addWidget(self.save_btn)
-        layout.addLayout(btn_row)
+        bottom_row.addWidget(self.save_btn)
+        bottom_row.addWidget(self.cancel_btn)
+
+        layout.addLayout(bottom_row)
 
         self.apply_style()
 
     def get_reminder_text(self):
         if not self.reminder_enable.isChecked():
             return None
-        return self.reminder_dt.dateTime().toString("yyyy-MM-dd HH:mm")
+        date_str = self.date_edit.date().toString("yyyy-MM-dd")
+        time_str = self.time_edit.text().strip()
+        if not re.match(r"^\d{2}:\d{2}$", time_str):
+            time_str = datetime.now().strftime("%H:%M")
+        return f"{date_str} {time_str}"
 
     def apply_style(self):
-        self.setStyleSheet("""
-            QDialog {
+        theme = self.theme
+        self.setStyleSheet(f"""
+            QDialog {{
                 background: transparent;
-            }
-
-            QFrame#mainFrame {
-                background-color: rgba(242, 242, 247, 220);
-                border: 1px solid rgba(255, 255, 255, 130);
-                border-radius: 18px;
-            }
-
-            QLabel {
-                color: #1C1C1E;
-                font-size: 13px;
+            }}
+            QFrame#mainFrame {{
+                background-color: {theme.get("card_bg", "rgba(242, 242, 247, 255)")};
+                border: 1px solid {theme.get("border", "rgba(200,200,200,160)")};
+                border-radius: 16px;
+            }}
+            QLabel {{
+                color: {theme.get("text", "#1C1C1E")};
+                font-size: 12px;
                 background: transparent;
-            }
-
-            QCheckBox {
-                color: #1C1C1E;
-                font-size: 13px;
-                spacing: 8px;
+            }}
+            QCheckBox {{
+                color: {theme.get("text", "#1C1C1E")};
+                font-size: 12px;
+                spacing: 6px;
                 background: transparent;
-            }
-
-            QTextEdit, QDateTimeEdit, QComboBox {
-                background-color: rgba(255, 255, 255, 225);
-                color: #1C1C1E;
-                border: 1px solid rgba(209, 209, 214, 170);
-                border-radius: 11px;
-                padding: 6px 8px;
-                font-size: 13px;
-                selection-background-color: #007AFF;
+            }}
+            QTextEdit, QLineEdit, QDateEdit, QComboBox {{
+                background-color: {theme.get("input_bg", "rgba(255,255,255,255)")};
+                color: {theme.get("text", "#1C1C1E")};
+                border: 1px solid {theme.get("border", "rgba(209,209,214,180)")};
+                border-radius: 8px;
+                padding: 4px 6px;
+                font-size: 12px;
+                selection-background-color: {theme.get("blue", "#007AFF")};
                 selection-color: #FFFFFF;
-            }
-
-            QTextEdit:focus, QDateTimeEdit:focus, QComboBox:focus {
-                border: 1px solid #007AFF;
-                background-color: rgba(255, 255, 255, 245);
-            }
-
-            QTextEdit {
-                padding-top: 8px;
-            }
-
-            QComboBox {
-                padding-right: 28px;
-            }
-
-            QComboBox::drop-down {
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 24px;
+            }}
+            QComboBox::drop-down {{
+                width: 18px;
                 border: none;
                 background: transparent;
-            }
-
-            QPushButton {
-                background-color: rgba(255, 255, 255, 225);
-                color: #007AFF;
-                border: 1px solid rgba(209, 209, 214, 120);
+            }}
+            QPushButton {{
                 border-radius: 10px;
-                padding: 6px 12px;
-                font-size: 13px;
-                font-weight: 500;
-            }
-
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 245);
-            }
-
-            QPushButton:pressed {
-                background-color: rgba(229, 229, 234, 220);
-            }
-
-            QPushButton:disabled {
+                padding: 2px 6px;
+                font-size: 12px;
+                font-weight: bold;
+                background-color: {theme.get("button_bg", "#F4F4F4")};
+                color: {theme.get("text", "#1C1C1E")};
+                border: 1px solid {theme.get("border", "rgba(200,200,200,160)")};
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+                background-color: {theme.get("button_hover", "#EDEDED")};
+            }}
+            QPushButton:disabled {{
                 color: #C7C7CC;
-                background-color: rgba(255, 255, 255, 160);
-            }
+            }}
+            QDateEdit::drop-down {{
+                width: 0px;
+                border: none;
+            }}
         """)
 
     def mousePressEvent(self, event):
@@ -468,135 +482,160 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None, config=None):
         super().__init__(parent)
         self.config = config or {}
-        self.setWindowTitle("设置")
-        self.setFixedSize(400, 390)
+        self.drag_position = None
+
+        self.setFixedSize(340, 210)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
-        self.root = QWidget(self)
-        self.root.setObjectName("settings_root")
-        self.root.setGeometry(0, 0, 400, 390)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(5, 5, 5, 5)
 
-        layout = QVBoxLayout(self.root)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
+        self.bg_frame = QFrame(self)
+        self.bg_frame.setObjectName("bg_frame")
+        main_layout.addWidget(self.bg_frame)
 
-        title_row = QHBoxLayout()
-        self.title = QLabel("设置")
-        self.title.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
-        title_row.addWidget(self.title)
-        title_row.addStretch()
-
-        close_btn = QPushButton("×")
-        close_btn.setFixedSize(26, 26)
-        close_btn.clicked.connect(self.reject)
-        title_row.addWidget(close_btn)
-        layout.addLayout(title_row)
-
-        form_card = QFrame()
-        form_card.setObjectName("settings_card")
-        form = QFormLayout(form_card)
+        form = QFormLayout(self.bg_frame)
+        form.setContentsMargins(20, 20, 20, 20)
         form.setSpacing(10)
-        form.setContentsMargins(14, 14, 14, 14)
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(list(THEMES.keys()))
-        self.theme_combo.setCurrentText(self.config.get("theme_style", "毛玻璃"))
+        self.theme_combo.setCurrentText(self.config.get("theme_style", "简约主题"))
+        form.addRow("主题", self.theme_combo)
 
-        self.dark_check = QCheckBox("深色模式")
+        mode_opacity_layout = QHBoxLayout()
+        mode_opacity_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.dark_check = QCheckBox("深色")
         self.dark_check.setChecked(self.config.get("dark_mode", False))
 
+        opacity_label = QLabel("透明度")
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(50, 100)
         self.opacity_slider.setValue(int(self.config.get("opacity", 0.92) * 100))
 
-        self.url_input = QLineEdit(self.config.get("ai_base_url", ""))
+        mode_opacity_layout.addWidget(self.dark_check)
+        mode_opacity_layout.addSpacing(10)
+        mode_opacity_layout.addWidget(opacity_label)
+        mode_opacity_layout.addWidget(self.opacity_slider)
+        form.addRow("模式", mode_opacity_layout)
+
+        self.url_input = QLineEdit(self.config.get("ai_base_url", "https://api.chatanywhere.tech/v1"))
         self.key_input = QLineEdit(self.config.get("ai_api_key", ""))
         self.key_input.setEchoMode(QLineEdit.Password)
+        form.addRow("API URL", self.url_input)
+        form.addRow("API Key", self.key_input)
+
+        model_btn_layout = QHBoxLayout()
+        model_btn_layout.setContentsMargins(0, 0, 0, 0)
+
         self.model_input = QLineEdit(self.config.get("ai_model", "gpt-4o-mini"))
+        self.model_input.setFixedWidth(140)
 
-        form.addRow("主题", self.theme_combo)
-        form.addRow("模式", self.dark_check)
-        form.addRow("透明度", self.opacity_slider)
-        form.addRow("AI Base URL", self.url_input)
-        form.addRow("AI API Key", self.key_input)
-        form.addRow("AI Model", self.model_input)
-
-        layout.addWidget(form_card)
-
-        save_row = QHBoxLayout()
-        save_row.addStretch()
-        self.save_btn = QPushButton("保存")
+        self.save_btn = QPushButton()
+        self.save_btn.setObjectName("save_btn")
+        self.save_btn.setFixedSize(22, 22)
+        self.save_btn.setToolTip("保存")
         self.save_btn.clicked.connect(self.save)
-        self.save_btn.setFixedHeight(38)
-        save_row.addWidget(self.save_btn)
-        layout.addLayout(save_row)
+
+        self.close_btn = QPushButton()
+        self.close_btn.setObjectName("close_btn")
+        self.close_btn.setFixedSize(22, 22)
+        self.close_btn.setToolTip("关闭")
+        self.close_btn.clicked.connect(self.reject)
+
+        model_btn_layout.addWidget(self.model_input)
+        model_btn_layout.addStretch()
+        model_btn_layout.addWidget(self.save_btn)
+        model_btn_layout.addWidget(self.close_btn)
+
+        form.addRow("Model", model_btn_layout)
 
         self.apply_style()
 
     def apply_style(self):
         theme = self.get_theme()
-        self.root.setStyleSheet(f"""
-            QWidget#settings_root {{
-                background-color: {theme["window_bg"]};
-                border-radius: 22px;
+        self.setStyleSheet(f"""
+            QDialog {{
+                background: transparent;
             }}
-            QFrame#settings_card {{
-                background-color: {theme["card_bg"]};
-                border: 1px solid {theme["border"]};
-                border-radius: 18px;
+            * {{ outline: none; font-size: 12px; }}
+            QFrame#bg_frame {{
+                background-color: {theme.get("card_bg", "#ffffff")};
+                border: 1px solid {theme.get("border", "#dcdcdc")};
+                border-radius: 16px;
             }}
             QLabel {{
-                color: {theme["text"]};
+                color: {theme.get("text", "#333333")};
                 background: transparent;
             }}
             QLineEdit, QComboBox {{
-                background-color: {theme["input_bg"]};
-                color: {theme["text"]};
-                border: 1px solid {theme["border"]};
-                border-radius: 12px;
-                padding: 8px 10px;
+                background-color: {theme.get("input_bg", "#f4f4f4")};
+                color: {theme.get("text", "#333333")};
+                border: 1px solid {theme.get("border", "#dcdcdc")};
+                border-radius: 8px;
+                padding: 4px 6px;
             }}
             QCheckBox {{
-                color: {theme["text"]};
-                spacing: 8px;
+                color: {theme.get("text", "#333333")};
+                spacing: 6px;
             }}
             QSlider::groove:horizontal {{
-                height: 6px;
-                background: rgba(127,127,127,60);
-                border-radius: 3px;
+                height: 8px;
+                background: rgba(127,127,127,50);
+                border-radius: 4px;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {theme.get("blue", "#0078D7")};
+                border-radius: 4px;
             }}
             QSlider::handle:horizontal {{
-                width: 18px;
-                margin: -6px 0;
-                border-radius: 9px;
-                background: {theme["blue"]};
+                width: 16px;
+                height: 16px;
+                margin: -4px 0;
+                border-radius: 8px;
+                background: #ffffff;
+                border: 1px solid {theme.get("border", "#dcdcdc")};
             }}
-            QPushButton {{
-                background-color: {theme["blue"]};
-                color: white;
-                border: none;
-                border-radius: 12px;
-                padding: 8px 18px;
-            }}
-            QPushButton:hover {{
-                background-color: {theme["blue_hover"]};
+            QSlider::handle:horizontal:hover {{
+                background: #f4f4f4;
             }}
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
-                width: 24px;
-                border-left: 1px solid {theme["border"]};
-                border-top-right-radius: 12px;
-                border-bottom-right-radius: 12px;
-                background: {theme["button_hover"]};
+                width: 20px;
+                border-left: 1px solid {theme.get("border", "#dcdcdc")};
+                border-top-right-radius: 8px;
+                border-bottom-right-radius: 8px;
+                background: transparent;
             }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme.get("menu_bg", theme.get("input_bg", "#ffffff"))};
+                color: {theme.get("text", "#333333")};
+                selection-background-color: {theme.get("menu_hover", theme.get("blue", "#0078D7"))};
+                border: 1px solid {theme.get("border", "#dcdcdc")};
+                border-radius: 6px;
+                outline: none;
+            }}
+            QPushButton#save_btn {{
+                background-color: #28a745;
+                border: none;
+                border-radius: 11px;
+            }}
+            QPushButton#save_btn:hover {{ background-color: #218838; }}
+            QPushButton#close_btn {{
+                background-color: #dc3545;
+                border: none;
+                border-radius: 11px;
+            }}
+            QPushButton#close_btn:hover {{ background-color: #c82333; }}
         """)
 
     def get_theme(self):
-        style = self.config.get("theme_style", "毛玻璃")
+        style = self.config.get("theme_style", "简约主题")
         dark = self.config.get("dark_mode", False)
-        return THEMES.get(style, THEMES["毛玻璃"])["dark" if dark else "light"]
+        return THEMES.get(style, THEMES["简约主题"])["dark" if dark else "light"]
 
     def save(self):
         self.config["theme_style"] = self.theme_combo.currentText()
@@ -607,6 +646,16 @@ class SettingsDialog(QDialog):
         self.config["ai_model"] = self.model_input.text().strip()
         self.accept()
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton and self.drag_position:
+            self.move(event.globalPos() - self.drag_position)
+            event.accept()
+
 
 class TaskItemWidget(QWidget):
     def __init__(self, task, theme):
@@ -616,28 +665,44 @@ class TaskItemWidget(QWidget):
         self.init_ui()
 
     def init_ui(self):
+        self.setMinimumHeight(50)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(2)
+        layout.setSpacing(0)
 
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(6)
 
         pr = self.task.get("priority", "低")
-        emoji = PRIORITY_EMOJI.get(pr, "🟢")
-        title_text = task_preview(self.task.get("task", ""))
+        pr_colors = {"高": "#FF3B30", "中": "#FF9500", "低": "#34C759"}
+        color = pr_colors.get(pr, "#34C759")
 
-        self.title = QLabel(f"{emoji} {title_text}")
+        self.pr_label = QLabel("●")
+        self.pr_label.setStyleSheet(f"color: {color}; font-size: 13px; background: transparent;")
+        self.pr_label.setFixedWidth(14)
+
+        title_text = task_preview(self.task.get("task", ""))
+        self.title = QLabel(title_text)
         self.title.setWordWrap(False)
-        self.title.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+        self.title.setFont(QFont("Microsoft YaHei", 10))
+        self.title.setMinimumHeight(20)
         self.title.setToolTip(self.task.get("task", ""))
+
+        # 根据主题颜色自动调整字体颜色
+        title_style = f"color: {self.theme.get('text', '#000000')}; background: transparent;"
         if self.task.get("done", False):
-            self.title.setStyleSheet("text-decoration: line-through; opacity: 0.6;")
+            title_style += " text-decoration: line-through; opacity: 0.5;"
+        self.title.setStyleSheet(title_style)
+
+        top.addWidget(self.pr_label)
         top.addWidget(self.title)
         top.addStretch()
 
-        self.status = QLabel("✓" if self.task.get("done", False) else "")
-        self.status.setFont(QFont("Arial", 11, QFont.Bold))
+        # 修改为高分辨率的完成标志，并取消粗体以兼容系统默认彩色Emoji渲染
+        self.status = QLabel("✅" if self.task.get("done", False) else "")
+        self.status.setStyleSheet(f"color: {self.theme.get('text', '#000000')}; background: transparent;")
+        self.status.setFont(QFont("Microsoft YaHei", 11))
         top.addWidget(self.status)
         layout.addLayout(top)
 
@@ -646,13 +711,18 @@ class TaskItemWidget(QWidget):
             sub_parts.append(f"⏰ {self.task['reminder']}")
         if self.task.get("created_at"):
             sub_parts.append(f"🕒 {self.task['created_at']}")
+
         self.sub = QLabel("   ".join(sub_parts))
+        # 针对子标题适配深色模式
+        self.sub.setStyleSheet(f"color: {self.theme.get('subtext', '#444444')}; background: transparent;")
         self.sub.setFont(QFont("Microsoft YaHei", 8))
         self.sub.setWordWrap(False)
         self.sub.setToolTip("   ".join(sub_parts))
-        layout.addWidget(self.sub)
 
-        self.setMinimumHeight(44)
+        bottom = QHBoxLayout()
+        bottom.setContentsMargins(20, 0, 0, 0)
+        bottom.addWidget(self.sub)
+        layout.addLayout(bottom)
 
 
 class StickyTodoApp(QMainWindow):
@@ -681,83 +751,106 @@ class StickyTodoApp(QMainWindow):
     def init_ui(self):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.resize(360, 590)
+        self.resize(320, 520)
 
         self.root = QWidget()
         self.root.setObjectName("root")
         self.setCentralWidget(self.root)
 
         main = QVBoxLayout(self.root)
-        main.setContentsMargins(10, 10, 10, 10)
-        main.setSpacing(10)
+        main.setContentsMargins(8, 8, 8, 8)
+        main.setSpacing(0)
 
         self.card = QFrame()
         self.card.setObjectName("card")
         main.addWidget(self.card)
 
+        shadow = QGraphicsDropShadowEffect(self.card)
+        shadow.setBlurRadius(20)
+        shadow.setXOffset(0)
+        shadow.setYOffset(4)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        self.card.setGraphicsEffect(shadow)
+
         card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(14, 14, 14, 14)
-        card_layout.setSpacing(10)
+        card_layout.setContentsMargins(12, 12, 12, 12)
+        card_layout.setSpacing(8)
 
         header = QHBoxLayout()
         self.title = QLabel("📝 AIToDo")
-        self.title.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        self.title.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
 
         self.pin_btn = QPushButton(" ")
-        self.pin_btn.setFixedSize(18, 18)
+        self.pin_btn.setFixedSize(16, 16)
+        self.pin_btn.setToolTip("置顶")
         self.pin_btn.clicked.connect(self.toggle_always_on_top)
 
         self.settings_btn = QPushButton(" ")
-        self.settings_btn.setFixedSize(18, 18)
+        self.settings_btn.setFixedSize(16, 16)
+        self.settings_btn.setToolTip("设置")
         self.settings_btn.clicked.connect(self.open_settings)
 
-        self.min_btn = QPushButton(" ")
-        self.min_btn.setFixedSize(18, 18)
-        self.min_btn.clicked.connect(self.hide_to_tray)
-
         self.close_btn = QPushButton(" ")
-        self.close_btn.setFixedSize(18, 18)
-        self.close_btn.clicked.connect(self.close_app)
+        self.close_btn.setFixedSize(16, 16)
+        self.close_btn.setToolTip("最小化到托盘")
+        self.close_btn.clicked.connect(self.hide_to_tray)  # 修改为最小化到托盘
 
         header.addWidget(self.title)
         header.addStretch()
         header.addWidget(self.pin_btn)
         header.addWidget(self.settings_btn)
-        header.addWidget(self.min_btn)
         header.addWidget(self.close_btn)
         card_layout.addLayout(header)
 
-        self.list_widget = QListWidget()
-        self.list_widget.setSpacing(5)
+        # 换用我们重写的TaskListWidget
+        self.list_widget = TaskListWidget()
+        self.list_widget.setSpacing(6)
         self.list_widget.setFrameShape(QFrame.NoFrame)
         self.list_widget.itemDoubleClicked.connect(self.edit_task)
         self.list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self.show_context_menu)
         self.list_widget.setMouseTracking(True)
         self.list_widget.setSelectionMode(QListWidget.SingleSelection)
+        self.list_widget.setDragDropMode(QListWidget.InternalMove)
+        self.list_widget.setDefaultDropAction(Qt.MoveAction)
+        self.list_widget.setDragEnabled(True)
+        self.list_widget.setAcceptDrops(True)
+        self.list_widget.setDropIndicatorShown(True)
+        self.list_widget.model().rowsMoved.connect(self.on_tasks_reordered)
         card_layout.addWidget(self.list_widget, 1)
 
         self.input_box = QLineEdit()
-        self.input_box.setPlaceholderText("输入任务，回车添加或用 AI 解析…")
+        self.input_box.setPlaceholderText("输入任务，回车添加或AI解析…")
         self.input_box.returnPressed.connect(self.add_manual_task)
         card_layout.addWidget(self.input_box)
 
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(10)
+        btn_row.setSpacing(8)
 
         self.add_btn = QPushButton("添加")
-        self.add_btn.setMinimumHeight(42)
-        self.add_btn.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+        self.add_btn.setMinimumHeight(36)
+        self.add_btn.setFont(QFont("Microsoft YaHei", 9, QFont.Bold))
         self.add_btn.clicked.connect(self.add_manual_task)
 
         self.ai_btn = QPushButton("AI DO")
-        self.ai_btn.setMinimumHeight(42)
-        self.ai_btn.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+        self.ai_btn.setMinimumHeight(36)
+        self.ai_btn.setFont(QFont("Microsoft YaHei", 9, QFont.Bold))
         self.ai_btn.clicked.connect(self.add_ai_task)
 
         btn_row.addWidget(self.add_btn)
         btn_row.addWidget(self.ai_btn)
         card_layout.addLayout(btn_row)
+
+    def on_tasks_reordered(self):
+        new_tasks = []
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            task = self.get_task_by_item(item)
+            if task:
+                new_tasks.append(task)
+        if len(new_tasks) == len(self.tasks):
+            self.tasks = new_tasks
+            self.save_tasks()
 
     def make_emoji_icon(self, emoji="📝", size=64):
         pixmap = QPixmap(size, size)
@@ -783,7 +876,8 @@ class StickyTodoApp(QMainWindow):
         self.tray.setIcon(self.make_emoji_icon("📝"))
         self.tray.setToolTip("AIToDo")
 
-        menu = QMenu()
+        menu = SmoothMenu(parent=self)
+        menu.setStyleSheet(self._menu_style())
         show_act = QAction("显示", self)
         show_act.triggered.connect(self.show_normal)
         quit_act = QAction("退出", self)
@@ -823,9 +917,9 @@ class StickyTodoApp(QMainWindow):
         self.show()
 
     def current_theme(self):
-        style = self.config.get("theme_style", "毛玻璃")
+        style = self.config.get("theme_style", "简约主题")
         dark = self.config.get("dark_mode", False)
-        return THEMES.get(style, THEMES["毛玻璃"])["dark" if dark else "light"]
+        return THEMES.get(style, THEMES["简约主题"])["dark" if dark else "light"]
 
     def restore_window_position(self):
         x = self.config.get("window_x")
@@ -833,7 +927,6 @@ class StickyTodoApp(QMainWindow):
         if x is not None and y is not None:
             self.move(int(x), int(y))
         else:
-            # 没有保存过位置时，居中或保持默认位置
             screen = QApplication.primaryScreen().availableGeometry()
             x = (screen.width() - self.width()) // 2
             y = (screen.height() - self.height()) // 2
@@ -845,30 +938,68 @@ class StickyTodoApp(QMainWindow):
         self.config["window_y"] = pos.y()
         self.save_config()
 
+    def _menu_style(self):
+        theme = self.current_theme()
+        return f"""
+            QMenu {{
+                background-color: {theme["menu_bg"]};
+                color: {theme["text"]};
+                border: 1px solid {theme["border"]};
+                border-radius: 10px;
+                padding: 4px;
+                margin: 6px;
+            }}
+            QMenu::item {{
+                padding: 6px 24px 6px 12px;
+                border-radius: 6px;
+                margin: 2px;
+                font-size: 12px;
+            }}
+            QMenu::item:selected {{
+                background-color: {theme["menu_hover"]};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background: {theme["border"]};
+                margin: 4px 6px;
+            }}
+            QMenu::indicator {{
+                width: 0px;
+                height: 0px;
+            }}
+        """
+
     def apply_theme(self):
         theme = self.current_theme()
         self.setWindowOpacity(self.config.get("opacity", 0.92))
 
-        self.root.setStyleSheet(f"""
-            QWidget#root {{
+        self.setStyleSheet(f"""
+            QMainWindow, QWidget#root {{
                 background: transparent;
+                border: none;
+                font-family: 'Microsoft YaHei';
             }}
             QFrame#card {{
-                background-color: {theme["window_bg"]};
-                border: 1px solid {theme["border"]};
-                border-radius: 24px;
+                background-color: {theme["card_bg"]};
+                border: none;
+                border-radius: 16px;
             }}
             QLabel {{
                 color: {theme["text"]};
                 background: transparent;
+                font-family: 'Microsoft YaHei';
             }}
             QLineEdit {{
                 background-color: {theme["input_bg"]};
                 color: {theme["text"]};
                 border: 1px solid {theme["border"]};
                 border-radius: 14px;
-                padding: 10px 12px;
-                font-size: 12px;
+                padding: 8px 12px;
+                font-size: 11px;
+                font-family: 'Microsoft YaHei';
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {theme["blue"]};
             }}
             QListWidget {{
                 background: transparent;
@@ -878,28 +1009,28 @@ class StickyTodoApp(QMainWindow):
             QListWidget::item {{
                 border: none;
                 margin: 0px;
-                border-radius: 14px;
+                border-radius: 12px;
             }}
             QListWidget::item:selected {{
-                background: rgba(0,122,255,28);
-                border: 1px solid rgba(0,122,255,55);
+                background: rgba(0,122,255,25);
+                border: 1px solid rgba(0,122,255,40);
             }}
             QListWidget::item:hover {{
-                background: rgba(0,122,255,16);
-                border-radius: 14px;
+                background: rgba(0,122,255,15);
+                border-radius: 12px;
             }}
             QScrollBar:vertical {{
                 background: transparent;
-                width: 7px;
+                width: 6px;
                 margin: 4px 2px 4px 2px;
             }}
             QScrollBar::handle:vertical {{
-                background: rgba(120,120,120,110);
-                min-height: 26px;
+                background: rgba(120,120,120,100);
+                min-height: 24px;
                 border-radius: 3px;
             }}
             QScrollBar::handle:vertical:hover {{
-                background: rgba(120,120,120,180);
+                background: rgba(120,120,120,160);
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
@@ -907,51 +1038,54 @@ class StickyTodoApp(QMainWindow):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
                 background: transparent;
             }}
-            QMenu {{
-                background-color: {theme["menu_bg"]};
-                color: {theme["text"]};
-                border: 1px solid {theme["border"]};
-                border-radius: 12px;
-                padding: 6px;
-            }}
-            QMenu::item {{
-                padding: 6px 24px 6px 20px;
-                border-radius: 8px;
-            }}
-            QMenu::item:selected {{
-                background-color: {theme["menu_hover"]};
-            }}
         """)
 
-        self.pin_btn.setStyleSheet("QPushButton{background:#FF9500;border:none;border-radius:9px;}")
-        self.settings_btn.setStyleSheet(f"QPushButton{{background:{theme['blue']};border:none;border-radius:9px;}}")
-        self.min_btn.setStyleSheet("QPushButton{background:#34C759;border:none;border-radius:9px;}")
-        self.close_btn.setStyleSheet("QPushButton{background:#FF3B30;border:none;border-radius:9px;}")
+        self.pin_btn.setStyleSheet("QPushButton{background:#FF9500;border:none;border-radius:8px;}")
+        self.settings_btn.setStyleSheet(f"QPushButton{{background:{theme['blue']};border:none;border-radius:8px;}}")
+        self.close_btn.setStyleSheet("QPushButton{background:#FF3B30;border:none;border-radius:8px;}")
 
         self.add_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {theme["button_bg"]};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(255,255,255,0.96),
+                    stop:1 {theme["button_bg"]});
                 color: {theme["blue"]};
-                border: 1px solid rgba(0,122,255,26);
-                border-radius: 18px;
-                padding: 10px 0px;
+                border: 1px solid rgba(0,122,255,20);
+                border-radius: 14px;
+                padding: 6px 0px;
                 font-weight: bold;
+                font-family: 'Microsoft YaHei';
             }}
             QPushButton:hover {{
-                background-color: {theme["button_hover"]};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(255,255,255,1),
+                    stop:1 {theme["button_hover"]});
+            }}
+            QPushButton:pressed {{
+                padding-top: 8px;
+                padding-bottom: 4px;
             }}
         """)
         self.ai_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {theme["blue"]};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {theme["blue_hover"]},
+                    stop:1 {theme["blue"]});
                 color: white;
                 border: none;
-                border-radius: 18px;
-                padding: 10px 0px;
+                border-radius: 14px;
+                padding: 6px 0px;
                 font-weight: bold;
+                font-family: 'Microsoft YaHei';
             }}
             QPushButton:hover {{
-                background-color: {theme["blue_hover"]};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 {theme["blue"]},
+                    stop:1 {theme["blue_hover"]});
+            }}
+            QPushButton:pressed {{
+                padding-top: 8px;
+                padding-bottom: 4px;
             }}
         """)
 
@@ -987,7 +1121,7 @@ class StickyTodoApp(QMainWindow):
         theme = self.current_theme()
         for task in self.tasks:
             item = QListWidgetItem()
-            item.setSizeHint(QSize(100, 50))
+            item.setSizeHint(QSize(100, 56))
             item.setData(Qt.UserRole, task.get("id"))
             widget = TaskItemWidget(task, theme)
             self.list_widget.addItem(item)
@@ -1017,6 +1151,7 @@ class StickyTodoApp(QMainWindow):
         text = self.input_box.text().strip()
         if not text:
             return
+        self.input_box.clear()
         if not self.config.get("ai_api_key"):
             QMessageBox.warning(self, "提示", "请先在设置中填写 AI API Key")
             return
@@ -1033,82 +1168,19 @@ class StickyTodoApp(QMainWindow):
     def on_ai_error(self, msg):
         self.input_box.setEnabled(True)
         self.ai_btn.setEnabled(True)
-        self.ai_btn.setText("AI 添加")
+        self.ai_btn.setText("AI DO")
         QMessageBox.critical(self, "AI 请求失败", msg)
 
     def parse_reminder_time(self, text):
-        if not text:
-            return ""
-
-        text = str(text).strip()
-        now = datetime.now()
-
-        try:
-            datetime.strptime(text, "%Y-%m-%d %H:%M")
-            return text
-        except:
-            pass
-
-        m = re.match(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*(\d{1,2}):(\d{2})", text)
-        if m:
-            y, mo, d, hh, mm = map(int, m.groups())
-            return f"{y:04d}-{mo:02d}-{d:02d} {hh:02d}:{mm:02d}"
-
-        day_offset = 0
-        if "今天" in text:
-            day_offset = 0
-        elif "明天" in text:
-            day_offset = 1
-        elif "后天" in text:
-            day_offset = 2
-        elif "大后天" in text:
-            day_offset = 3
-
-        base_date = now + timedelta(days=day_offset)
-        date_str = base_date.strftime("%Y-%m-%d")
-
-        hour = None
-        minute = 0
-
-        m = re.search(r"(\d{1,2})[:：](\d{2})", text)
-        if m:
-            hour = int(m.group(1))
-            minute = int(m.group(2))
-
-        if hour is None:
-            m = re.search(r"(\d{1,2})\s*点\s*(半|(\d{1,2})分?)?", text)
-            if m:
-                hour = int(m.group(1))
-                if m.group(2) == "半":
-                    minute = 30
-                elif m.group(3):
-                    minute = int(m.group(3))
-
-        if hour is not None:
-            if ("下午" in text or "晚上" in text or "夜里" in text) and hour < 12:
-                hour += 12
-            elif "中午" in text:
-                if hour == 0 or hour == 12:
-                    hour = 12
-                elif hour < 12:
-                    hour += 12
-            return f"{date_str} {hour:02d}:{minute:02d}"
-
-        if "中午" in text:
-            return f"{date_str} 12:00"
-        if "上午" in text:
-            return f"{date_str} 09:00"
-        if "下午" in text:
-            return f"{date_str} 15:00"
-        if "晚上" in text or "夜里" in text or "今晚" in text:
-            return f"{date_str} 20:00"
-
-        return text
+        dt = parse_datetime_text(text)
+        if dt:
+            return dt.strftime("%Y-%m-%d %H:%M")
+        return str(text).strip()
 
     def on_ai_result(self, data):
         self.input_box.setEnabled(True)
         self.ai_btn.setEnabled(True)
-        self.ai_btn.setText("AI 添加")
+        self.ai_btn.setText("AI DO")
         try:
             action = data.get("action", "")
             task = data.get("task") or data.get("content") or data.get("title") or ""
@@ -1133,7 +1205,6 @@ class StickyTodoApp(QMainWindow):
                 })
                 self.save_tasks()
                 self.refresh_list()
-                QMessageBox.information(self, "成功", f"已添加任务：{task}")
 
             elif action == "delete":
                 matched = self.find_task_by_keyword(task)
@@ -1145,21 +1216,16 @@ class StickyTodoApp(QMainWindow):
                         self.tasks.remove(t)
                 self.save_tasks()
                 self.refresh_list()
-                QMessageBox.information(self, "成功", f"已删除任务：{task}")
 
             elif action == "delete_done":
-                before = len(self.tasks)
                 self.tasks = [t for t in self.tasks if not t.get("done", False)]
-                removed = before - len(self.tasks)
                 self.save_tasks()
                 self.refresh_list()
-                QMessageBox.information(self, "成功", f"已删除 {removed} 个已完成任务")
 
             elif action == "clear_all":
                 self.tasks = []
                 self.save_tasks()
                 self.refresh_list()
-                QMessageBox.information(self, "成功", "已清空所有任务")
 
             elif action == "update_priority":
                 matched = self.find_task_by_keyword(task)
@@ -1170,24 +1236,19 @@ class StickyTodoApp(QMainWindow):
                     t["priority"] = priority
                 self.save_tasks()
                 self.refresh_list()
-                QMessageBox.information(self, "成功", f"已更新任务优先级：{task} -> {priority}")
 
             elif action == "set_reminder":
                 matched = self.find_task_by_keyword(task)
-
                 if not reminder:
                     QMessageBox.warning(self, "提示", "提醒时间为空，无法设置")
                     return
-
                 reminder_time = self.parse_reminder_time(reminder)
-
                 if matched:
                     for t in matched:
                         t["reminder"] = reminder_time
                         t["_notified"] = False
                     self.save_tasks()
                     self.refresh_list()
-                    QMessageBox.information(self, "成功", f"已设置提醒：{task} -> {reminder_time}")
                 else:
                     new_task = {
                         "id": str(uuid.uuid4()),
@@ -1201,8 +1262,6 @@ class StickyTodoApp(QMainWindow):
                     self.tasks.append(new_task)
                     self.save_tasks()
                     self.refresh_list()
-                    QMessageBox.information(self, "成功",
-                                            f"未找到原任务，已新增任务并设置提醒：{task} -> {reminder_time}")
 
             elif action == "complete":
                 matched = self.find_task_by_keyword(task)
@@ -1213,7 +1272,6 @@ class StickyTodoApp(QMainWindow):
                     t["done"] = True
                 self.save_tasks()
                 self.refresh_list()
-                QMessageBox.information(self, "成功", f"已标记完成：{task}")
 
             elif action == "uncomplete":
                 matched = self.find_task_by_keyword(task)
@@ -1224,7 +1282,6 @@ class StickyTodoApp(QMainWindow):
                     t["done"] = False
                 self.save_tasks()
                 self.refresh_list()
-                QMessageBox.information(self, "成功", f"已取消完成：{task}")
 
             else:
                 QMessageBox.warning(self, "提示", f"未知操作：{action}")
@@ -1254,7 +1311,7 @@ class StickyTodoApp(QMainWindow):
         task = self.get_task_by_item(item)
         if not task:
             return
-        dialog = EditTaskDialog(task, self)
+        dialog = EditTaskDialog(task, self, self.current_theme())
         if dialog.exec_() == QDialog.Accepted:
             new_text = dialog.text_edit.toPlainText().strip()
             if new_text:
@@ -1277,14 +1334,19 @@ class StickyTodoApp(QMainWindow):
         if not task:
             return
 
-        menu = QMenu()
+        menu = SmoothMenu(parent=self)
+        menu.setStyleSheet(self._menu_style())
+
         done_act = QAction("标记完成/未完成", self)
         delete_act = QAction("删除", self)
 
-        pr_menu = QMenu("修改优先级", self)
-        pr_high = QAction("🔴 高", self)
-        pr_mid = QAction("🟡 中", self)
-        pr_low = QAction("🟢 低", self)
+        pr_menu = SmoothMenu("修改优先级", self)
+        pr_menu.setStyleSheet(self._menu_style())
+
+        pr_high = QAction("高", self)
+        pr_mid = QAction("中", self)
+        pr_low = QAction("低", self)
+
         pr_menu.addAction(pr_high)
         pr_menu.addAction(pr_mid)
         pr_menu.addAction(pr_low)
@@ -1348,7 +1410,7 @@ class StickyTodoApp(QMainWindow):
 
             try:
                 dt = datetime.strptime(reminder, "%Y-%m-%d %H:%M")
-            except:
+            except Exception:
                 continue
 
             if dt <= now < dt + timedelta(minutes=1):
@@ -1364,10 +1426,12 @@ class StickyTodoApp(QMainWindow):
 
         if triggered:
             self.save_tasks()
-            self.show_normal()
-            self.raise_()
-            self.activateWindow()
-            self.start_shake(duration_ms=5000, amplitude=6, interval_ms=30)
+            # 增加判断：只有当窗口不在隐藏(最小化到托盘)状态时，才进行强制弹窗和晃动
+            if not self.isHidden():
+                self.show_normal()
+                self.raise_()
+                self.activateWindow()
+                self.start_shake(duration_ms=5000, amplitude=6, interval_ms=30)
 
     def open_settings(self):
         dlg = SettingsDialog(self, self.config)
@@ -1381,7 +1445,7 @@ class StickyTodoApp(QMainWindow):
             self.save_window_position()
             if self.tray:
                 self.tray.hide()
-        except:
+        except Exception:
             pass
         QApplication.quit()
 
@@ -1392,12 +1456,14 @@ class StickyTodoApp(QMainWindow):
         event.accept()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and event.pos().y() < 60:
+        # 用户点击主窗体其他地方，取消列表内容的选中状态
+        self.list_widget.clearSelection()
+        if event.button() == Qt.LeftButton and event.pos().y() < 50:
             self.old_pos = event.globalPos()
 
     def mouseMoveEvent(self, event):
         if self.old_pos is not None and event.buttons() & Qt.LeftButton:
-            delta = QPoint(event.globalPos() - self.old_pos)
+            delta = event.globalPos() - self.old_pos
             self.move(self.x() + delta.x(), self.y() + delta.y())
             self.old_pos = event.globalPos()
 
@@ -1407,8 +1473,15 @@ class StickyTodoApp(QMainWindow):
 
 
 if __name__ == "__main__":
+    # 注册AppUserModelID，保证Windows能够正确接收通知弹出右下角系统级别弹窗
+    if platform.system() == "Windows":
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("mycompany.aitodo.1.0")
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    app.setFont(QFont("Microsoft YaHei", 9))
     w = StickyTodoApp()
     if w.config.get("always_on_top", False):
         w.apply_window_flags()
