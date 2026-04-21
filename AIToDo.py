@@ -119,7 +119,7 @@ THEMES = {
     }
 }
 
-TASK_PREVIEW_LEN = 14
+TASK_PREVIEW_LEN = 25
 
 
 def now_str():
@@ -243,7 +243,7 @@ class AIWorker(QThread):
 
             prompt = f"""
                 你是一个待办事项助手，负责把用户的自然语言指令转换为严格 JSON。
-                
+
                 你必须遵守以下规则：
                 1. 只输出 JSON，不能输出解释、备注、markdown、代码块
                 2. JSON 必须使用以下字段：
@@ -258,7 +258,7 @@ class AIWorker(QThread):
                 7. 如果无法准确转换时间，请根据常识返回推算过后的时间，当前时间为{now_str()}
                 8. 如果用户没说优先级，默认低
                 9. 如果用户没明确说任务名，也尽量从句子中提取出核心任务
-                
+
                 支持的 action：
                 - add：添加任务，最常用的action
                 - delete：删除任务
@@ -268,7 +268,7 @@ class AIWorker(QThread):
                 - set_reminder：对特定的任务已存在任务进行提醒
                 - complete：标记完成
                 - uncomplete：取消完成
-                
+
                 用户输入：
                 {self.text}
 """
@@ -1477,7 +1477,7 @@ if __name__ == "__main__":
     if platform.system() == "Windows":
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("mycompany.aitodo.1.0")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("AIToDo")
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
