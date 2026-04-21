@@ -33,4 +33,12 @@ python=3.11
 ## 运行方式
 ```bash  
 pip install pyqt5 requests  
-python main.py  
+python main.py
+
+## 打包命令
+```bash
+pyinstaller --noconsole --onefile --icon .\todo.ico .\AIToDoApp.py
+
+## 使用建议
+1.程序没有开机自启动，建议自行添加。
+2.当窗口未被最小化时，如有提醒类型任务，则会窗口置顶并晃动提醒。
